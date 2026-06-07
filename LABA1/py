@@ -1,0 +1,114 @@
+import numpy as np
+import matplotlib.pyplot as plt
+np.random.seed(42)
+
+n = 80
+X = np.random.uniform(-3, 7, n)
+noise = np.random.normal(0, 0.3, n)
+Y = 0.1 * (X - 4) * np.cos(X) + 0.5 * X + noise
+idx = np.argsort(X)
+X = X[idx]
+Y = Y[idx]
+
+# Ядро Епанечникова
+def epanechnikov(z):
+    z = np.asarray(z)
+    k = np.zeros_like(z)
+    mask = np.abs(z) <= 1
+    k[mask] = 0.75 * (1 - z[mask]**2)
+    return k
+
+# Непараметрическая регрессия
+def parzen_predict(x0, X_train, Y_train, h):
+    z = (x0 - X_train) / h
+    K = epanechnikov(z)
+    denom = np.sum(K)
+    if denom == 0:
+        return np.mean(Y_train)
+    weights = K / denom
+    return np.sum(weights * Y_train)
+
+# LOOCV 
+def loocv_mse(X, Y, beta):
+    n = len(X)
+
+    # Формула (4.7.5)
+    h = beta * n ** (-1/5)
+    errors = []
+    for i in range(n):
+        X_train = np.delete(X, i)
+        Y_train = np.delete(Y, i)
+
+        y_hat = parzen_predict(
+            X[i],
+            X_train,
+            Y_train,
+            h
+        )
+        errors.append((Y[i] - y_hat) ** 2)
+    return np.mean(errors)
+
+# Подбор beta
+betas = np.arange(0.1, 2.01, 0.1)
+mse_values = []
+best_beta = None
+best_mse = np.inf
+for beta in betas:
+    mse = loocv_mse(X, Y, beta)
+    mse_values.append(mse)
+    print(f"beta = {beta:.1f}   MSE = {mse:.6f}")
+    if mse < best_mse:
+        best_mse = mse
+        best_beta = beta
+
+print("Лучший beta =", best_beta)
+print("Минимальный MSE =", best_mse)
+
+h_opt = best_beta * n ** (-1/5)
+X_grid = np.linspace(-3, 7, 500)
+Y_pred = np.array([
+    parzen_predict(x, X, Y, h_opt)
+    for x in X_grid
+])
+
+# Истинная функция без шума
+Y_true = 0.1 * (X_grid - 4) * np.cos(X_grid) + 0.5 * X_grid
+plt.figure(figsize=(12, 5))
+#регрессия
+plt.subplot(1, 2, 1)
+plt.scatter(X, Y, alpha=0.7, label='Выборка')
+plt.plot(
+    X_grid,
+    Y_true,
+    linewidth=2,
+    label='Истинная функция'
+)
+
+plt.plot(
+    X_grid,
+    Y_pred,
+    linewidth=2,
+    label='НПР'
+)
+
+plt.title(f'Непараметрическая регрессия\nbeta = {best_beta:.1f}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.grid(True)
+plt.legend()
+
+#MSE(beta) 
+plt.subplot(1, 2, 2)
+plt.plot(
+    betas,
+    mse_values,
+    marker='o'
+)
+
+plt.xlabel('beta')
+plt.ylabel('MSE')
+plt.title('LOOCV')
+plt.grid(True)
+
+plt.tight_layout()
+plt.show()
