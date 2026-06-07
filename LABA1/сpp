@@ -1,0 +1,160 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <random>
+#include <algorithm>
+#include <iomanip>
+
+using namespace std;
+
+// Ядро Епанечникова
+double epanechnikov(double z)
+{
+    if (abs(z) > 1.0)
+        return 0.0;
+    return 0.75 * (1.0 - z * z);
+}
+
+// НПР Розенблатта-Парзена
+double parzenPredict(
+    double x0,
+    const vector<double>& X,
+    const vector<double>& Y,
+    double h)
+{
+    double numerator = 0.0;
+    double denominator = 0.0;
+
+    for (size_t i = 0; i < X.size(); i++)
+    {
+        double z = (x0 - X[i]) / h;
+        double K = epanechnikov(z);
+        numerator += K * Y[i];
+        denominator += K;
+    }
+    if (denominator == 0.0)
+    {
+        double meanY = 0.0;
+        for (double y : Y)
+            meanY += y;
+        return meanY / Y.size();
+    }
+    return numerator / denominator;
+}
+
+// LOOCV
+double loocvMSE(
+    const vector<double>& X,
+    const vector<double>& Y,
+    double beta)
+{
+    int n = X.size();
+    double h = beta * pow(n, -1.0 / 5.0);
+    double mse = 0.0;
+    for (int i = 0; i < n; i++)
+    {
+        vector<double> Xtrain;
+        vector<double> Ytrain;
+        Xtrain.reserve(n - 1);
+        Ytrain.reserve(n - 1);
+        for (int j = 0; j < n; j++)
+        {
+            if (j == i)
+                continue;
+            Xtrain.push_back(X[j]);
+            Ytrain.push_back(Y[j]);
+        }
+        double yHat =
+            parzenPredict(X[i], Xtrain, Ytrain, h);
+        double error = Y[i] - yHat;
+        mse += error * error;
+    }
+    return mse / n;
+}
+
+int main()
+{
+    const int n = 80;
+    vector<double> X(n);
+    vector<double> Y(n);
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_real_distribution<double>
+        uniformX(-3.0, 7.0);
+    normal_distribution<double>
+        noise(0.0, 0.3);
+    for (int i = 0; i < n; i++)
+    {
+        X[i] = uniformX(gen);
+        Y[i] =
+            0.1 * (X[i] - 4.0) * cos(X[i]) +
+            0.5 * X[i] +
+            noise(gen);
+    }
+
+    // Сортировка по X
+    vector<pair<double, double>> data;
+    for (int i = 0; i < n; i++)
+        data.push_back({X[i], Y[i]});
+    sort(data.begin(), data.end());
+    for (int i = 0; i < n; i++)
+    {
+        X[i] = data[i].first;
+        Y[i] = data[i].second;
+    }
+
+    // Поиск лучшего beta
+    double bestBeta = 0.1;
+    double bestMSE = 1e100;
+    cout << fixed << setprecision(6);
+
+    for (double beta = 0.1;
+         beta <= 2.0001;
+         beta += 0.1)
+    {
+        double mse =
+            loocvMSE(X, Y, beta);
+        cout
+            << "beta = "
+            << setw(4)
+            << beta
+            << "    MSE = "
+            << mse
+            << endl;
+
+        if (mse < bestMSE)
+        {
+            bestMSE = mse;
+            bestBeta = beta;
+        }
+    }
+
+    cout << "Best beta = "
+         << bestBeta << endl;
+
+    cout << "Best MSE  = "
+         << bestMSE << endl;
+
+    double h =
+        bestBeta * pow(n, -1.0 / 5.0);
+
+    cout << "\nПрогнозы модели:\n";
+
+    for (double x = -3.0;
+         x <= 7.0;
+         x += 0.5)
+    {
+        double yPred =
+            parzenPredict(x, X, Y, h);
+
+        cout
+            << "x = "
+            << setw(6)
+            << x
+            << "  y = "
+            << yPred
+            << endl;
+    }
+
+    return 0;
+}
